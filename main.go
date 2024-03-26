@@ -2,6 +2,8 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
+	"flag"
 	"fmt"
 	"image/color"
 	"log"
@@ -27,6 +29,12 @@ type Point struct {
 
 type TestPoint struct {
 	X, Y float64
+}
+
+type Configuration struct {
+	Name     string  `json:"name"`
+	MaxValue float64 `json:"maxValue"`
+	Points   []Point `json:"points"`
 }
 
 func CalculateElectricField(charge, pointX, pointY, testPointX, testPointY float64) (float64, float64) {
@@ -137,82 +145,120 @@ func PlotElectricFieldLines(p *plot.Plot, points []Point, testPoints []TestPoint
 }
 
 func main() {
-	fmt.Print("Enter the number of charges:")
-	reader := bufio.NewReader(os.Stdin)
-	numChargesStr, err := reader.ReadString('\n')
-	if err != nil {
-		log.Fatalf("error reading input: %v", err)
-	}
-	numChargesStr = strings.TrimSpace(numChargesStr)
-	numCharges, err := strconv.Atoi(numChargesStr)
-	if err != nil {
-		log.Fatalf("invalid number of charges: %v", err)
-	}
+	useJson := flag.Bool("json", false, "whether to use JSON input (true/false)")
+	flag.Parse()
+	if *useJson {
+		if len(flag.Args()) == 0 {
+			log.Fatal("Usage: ./your_program input.json")
+		}
+		filename := flag.Args()[0]
 
-	var charges []Point
+		var config Configuration
+		file, err := os.Open(filename)
+		if err != nil {
+			log.Fatalf("error opening file: %v", err)
+		}
+		defer file.Close()
 
-	for i := 0; i < numCharges; i++ {
-		fmt.Printf("Enter the position (x y) and charge value for charge %d, separated by spaces: ", i+1)
-		inputStr, err := reader.ReadString('\n')
+		if err := json.NewDecoder(file).Decode(&config); err != nil {
+			log.Fatalf("error reading input from JSON: %v", err)
+		}
+		MaxValue = config.MaxValue
+		MinValue = -config.MaxValue
+		testPoints := GenerateTestPoints(1, config.Points)
+		p := plot.New()
+		p.Title.Text = "Electric Field Vectors"
+		p.X.Label.Text = "X"
+		p.Y.Label.Text = "Y"
+		PlotPoints(p, config.Points, testPoints)
+		PlotElectricFieldLines(p, config.Points, testPoints)
+		p.X.Min = -config.MaxValue
+		p.X.Max = config.MaxValue
+		p.Y.Min = -config.MaxValue
+		p.Y.Max = config.MaxValue
+
+		if err := p.Save(8*vg.Inch, 8*vg.Inch, config.Name+".png"); err != nil {
+			log.Fatalf("could not save plot: %v", err)
+		}
+	} else {
+		fmt.Print("Enter the number of charges:")
+		reader := bufio.NewReader(os.Stdin)
+		numChargesStr, err := reader.ReadString('\n')
 		if err != nil {
 			log.Fatalf("error reading input: %v", err)
 		}
-		inputStr = strings.TrimSpace(inputStr)
-		parts := strings.Fields(inputStr)
-		if len(parts) != 3 {
-			log.Fatalf("invalid input format")
-		}
-		x, err := strconv.ParseFloat(parts[0], 64)
+		numChargesStr = strings.TrimSpace(numChargesStr)
+		numCharges, err := strconv.Atoi(numChargesStr)
 		if err != nil {
-			log.Fatalf("invalid position x: %v", err)
+			log.Fatalf("invalid number of charges: %v", err)
 		}
-		y, err := strconv.ParseFloat(parts[1], 64)
+
+		var charges []Point
+
+		for i := 0; i < numCharges; i++ {
+			fmt.Printf("Enter the position (x y) and charge value for charge %d, separated by spaces: ", i+1)
+			inputStr, err := reader.ReadString('\n')
+			if err != nil {
+				log.Fatalf("error reading input: %v", err)
+			}
+			inputStr = strings.TrimSpace(inputStr)
+			parts := strings.Fields(inputStr)
+			if len(parts) != 3 {
+				log.Fatalf("invalid input format")
+			}
+			x, err := strconv.ParseFloat(parts[0], 64)
+			if err != nil {
+				log.Fatalf("invalid position x: %v", err)
+			}
+			y, err := strconv.ParseFloat(parts[1], 64)
+			if err != nil {
+				log.Fatalf("invalid position y: %v", err)
+			}
+			charge, err := strconv.ParseFloat(parts[2], 64)
+			if err != nil {
+				log.Fatalf("invalid charge value: %v", err)
+			}
+			charges = append(charges, Point{X: x, Y: y, Charge: charge})
+		}
+
+		fmt.Print("Enter the maximum value for the plot: ")
+		maxValueStr, err := reader.ReadString('\n')
 		if err != nil {
-			log.Fatalf("invalid position y: %v", err)
+			log.Fatalf("error reading input: %v", err)
 		}
-		charge, err := strconv.ParseFloat(parts[2], 64)
+		maxValueStr = strings.TrimSpace(maxValueStr)
+		maxValue, err := strconv.ParseFloat(maxValueStr, 64)
 		if err != nil {
-			log.Fatalf("invalid charge value: %v", err)
+			log.Fatalf("invalid maximum value: %v", err)
 		}
-		charges = append(charges, Point{X: x, Y: y, Charge: charge})
-	}
+		MaxValue = maxValue
+		MinValue = -maxValue
 
-	fmt.Print("Enter the maximum value for the plot: ")
-	maxValueStr, err := reader.ReadString('\n')
-	if err != nil {
-		log.Fatalf("error reading input: %v", err)
-	}
-	maxValueStr = strings.TrimSpace(maxValueStr)
-	maxValue, err := strconv.ParseFloat(maxValueStr, 64)
-	if err != nil {
-		log.Fatalf("invalid maximum value: %v", err)
-	}
-	MaxValue = maxValue
+		fmt.Print("Enter the filename for the final plot (e.g., my_plot.png): ")
+		filename, err := reader.ReadString('\n')
+		if err != nil {
+			log.Fatalf("error reading input: %v", err)
+		}
+		filename = strings.TrimSpace(filename)
 
-	fmt.Print("Enter the filename for the final plot (e.g., my_plot.png): ")
-	filename, err := reader.ReadString('\n')
-	if err != nil {
-		log.Fatalf("error reading input: %v", err)
-	}
-	filename = strings.TrimSpace(filename)
+		testPoints := GenerateTestPoints(1, charges)
 
-	testPoints := GenerateTestPoints(1, charges)
+		p := plot.New()
+		p.Title.Text = "Electric Field Vectors"
+		p.X.Label.Text = "X"
+		p.Y.Label.Text = "Y"
 
-	p := plot.New()
-	p.Title.Text = "Electric Field Vectors"
-	p.X.Label.Text = "X"
-	p.Y.Label.Text = "Y"
+		PlotPoints(p, charges, testPoints)
 
-	PlotPoints(p, charges, testPoints)
+		PlotElectricFieldLines(p, charges, testPoints)
 
-	PlotElectricFieldLines(p, charges, testPoints)
+		p.X.Min = MinValue
+		p.X.Max = MaxValue
+		p.Y.Min = MinValue
+		p.Y.Max = MaxValue
 
-	p.X.Min = MinValue
-	p.X.Max = MaxValue
-	p.Y.Min = MinValue
-	p.Y.Max = MaxValue
-
-	if err := p.Save(8*vg.Inch, 8*vg.Inch, filename); err != nil {
-		log.Fatalf("could not save plot: %v", err)
+		if err := p.Save(8*vg.Inch, 8*vg.Inch, filename); err != nil {
+			log.Fatalf("could not save plot: %v", err)
+		}
 	}
 }

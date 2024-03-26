@@ -1,0 +1,8 @@
+{
+  "name": "test1",
+  "maxValue": 20,
+  "points": [
+    {"x": 4, "y": 4, "charge": 1},
+    {"x": 14, "y": 4, "charge": -1}
+  ]
+}
